@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Mobile Chess vs AI</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/1.0.0-beta.8/chess.min.js"></script>
+    <script type="module">
+        import {Chessboard, MARKERS_TYPE, INPUT_EVENT_TYPE} from "https://unpkg.com/cm-chessboard@8/src/cm-chessboard/Chessboard.js"
+    </script>
+    <style>
+        body { display: flex; flex-direction: column; align-items: center; padding: 20px; background: #f0f0f0; font-family: Arial; }
+        #board { width: 90vw; max-width: 500px; }
+        .controls { margin: 20px 0; text-align: center; }
+        button, select { padding: 10px; margin: 5px; font-size: 1em; }
+        #status { font-size: 1.2em; margin: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Chess vs AI</h1>
+    <div id="board"></div>
+    <div class="controls">
+        <select id="level">
+            <option value="1">Easy</option>
+            <option value="5" selected>Medium</option>
+            <option value="10">Hard</option>
+        </select>
+        <button onclick="newGame()">New Game</button>
+        <button onclick="flipBoard()">Flip Board</button>
+    </div>
+    <div id="status">White to move</div>
+
+    <script type="module">
+        let board;
+        let game = new Chess();
+        let thinking = false;
+
+        async function initBoard() {
+            board = new Chessboard(document.getElementById("board"), {
+                position: game.fen(),
+                sprite: { url: "https://unpkg.com/cm-chessboard@8/assets/images/chessboard-sprite.svg" },
+                style: { aspectRatio: 1 },
+                responsive: true
+            });
+
+            board.enableMoveInput(moveInputHandler);
+        }
+
+        function moveInputHandler(event) {
+            if (thinking || game.turn() !== 'w') return; // Human plays White only
+
+            if (event.type === INPUT_EVENT_TYPE.moveInputStarted) {
+                const moves = game.moves({ square: event.square, verbose: true });
+                if (moves.length > 0) {
+                    board.addMarker(event.square, MARKERS_TYPE.emphasize);
+                    return true;
+                }
+            } else if (event.type === INPUT_EVENT_TYPE.moveInputFinished) {
+                board.removeMarkers();
+            } else if (event.type === INPUT_EVENT_TYPE.validateMoveInput) {
+                const move = game.move({ from: event.squareFrom, to: event.squareTo, promotion: "q" });
+                if (move) {
+                    board.setPosition(game.fen());
+                    updateStatus();
+                    if (!game.isGameOver()) aiMove();
+                } else {
+                    board.setPosition(game.fen()); // snap back
+                }
+                board.removeMarkers();
+            }
+        }
+
+        async function aiMove() {
+            thinking = true;
+            updateStatus("AI thinking...");
+            const level = document.getElementById("level").value;
+            const depth = level > 5 ? 8 : 6; // simple random-ish AI (no Stockfish to avoid worker issues)
+            const moves = game.moves();
+            const randomMove = moves[Math.floor(Math.random() * moves.length)];
+            setTimeout(() => {
+                game.move(randomMove);
+                board.setPosition(game.fen());
+                updateStatus();
+                thinking = false;
+            }, 500 + level * 200);
+        }
+
+        function updateStatus() {
+            if (game.isCheckmate()) {
+                document.getElementById("status").innerText = "Checkmate! " + (game.turn() === 'w' ? "Black" : "White") + " wins";
+            } else if (game.isDraw()) {
+                document.getElementById("status").innerText = "Draw!";
+            } else {
+                document.getElementById("status").innerText = (game.turn() === 'w' ? "White" : "Black") + " to move";
+            }
+        }
+
+        function newGame() {
+            game.reset();
+            board.setPosition("start");
+            updateStatus();
+        }
+
+        function flipBoard() {
+            board.setOrientation(board.getOrientation() === "white" ? "black" : "white");
+        }
+
+        initBoard();
+        updateStatus();
+    </script>
+</body>
+</html>
