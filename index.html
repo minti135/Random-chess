@@ -1,180 +1,130 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chess Game with AI</title>
-    
-    <!-- Dependencies -->
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    
-    <!-- FIXED: Using version 0.10.3 to match your code's logic (in_checkmate, etc.) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
-    
-    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
-    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
-    
-    <style>
-        body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f0f0f0; font-family: Arial, sans-serif; }
-        #board { width: 400px; margin: 20px 0; border: 4px solid #444; }
-        .controls { text-align: center; margin: 10px; }
-        select, button { padding: 10px; margin: 5px; font-size: 1em; cursor: pointer; }
-        .status { font-size: 1.2em; margin: 10px; font-weight: bold; }
-        #error { color: red; margin: 10px; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <h1>Chess Game</h1>
-    <div id="board"></div>
-    <div class="controls">
-        <select id="opponent">
-            <option value="none">Human vs Human</option>
-            <option value="ai" selected>Play against AI (Stockfish)</option>
-        </select>
-        <select id="playerColor">
-            <option value="w" selected>Play as White</option>
-            <option value="b">Play as Black</option>
-        </select>
-        <select id="skillLevel">
-            <option value="0">Beginner (0)</option>
-            <option value="8">Easy (8)</option>
-            <option value="14">Medium (14)</option>
-            <option value="18">Hard (18)</option>
-            <option value="20" selected>Very Hard (20)</option>
-        </select>
-        <button onclick="startGame()">Start / New Game</button>
-    </div>
-    <div class="status" id="status">Loading...</div>
-    <div id="error"></div>
+<script>
+    let board = null;
+    let game = null;
+    let stockfish = null;
+    let aiThinking = false;
 
-    <script>
-        let board = null;
-        let game = null;
-        let stockfish = null;
-        let aiThinking = false;
+    function showError(msg) {
+        document.getElementById('error').innerHTML = 'Error: ' + msg;
+        console.error('APP ERROR:', msg);
+    }
 
-        function showError(msg) {
-            document.getElementById('error').innerHTML = 'Error: ' + msg;
-            console.error('APP ERROR:', msg);
-        }
-
-        function initStockfish() {
-            try {
-                // Using a stable version of Stockfish
-                const worker = new Worker('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');
-                
-                worker.onmessage = function(e) {
-                    if (e.data.startsWith('bestmove')) {
-                        const move = e.data.split(' ')[1];
-                        if (move && move !== '(none)') {
-                            game.move(move, { sloppy: true });
-                            board.position(game.fen());
-                            updateStatus();
-                            aiThinking = false;
-                        }
-                    }
-                };
-
-                worker.postMessage('uci');
-                worker.postMessage('ucinewgame');
-                return worker;
-            } catch (e) {
-                showError('Cannot start Stockfish: ' + e.message);
-                return null;
-            }
-        }
-
-        function makeAIMove() {
-            if (!game || game.game_over() || aiThinking || !stockfish) return;
-            aiThinking = true;
-            updateStatus();
+    function initStockfish() {
+        try {
+            const stockfishUrl = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js';
             
-            const skill = document.getElementById('skillLevel').value;
-            stockfish.postMessage('setoption name Skill Level value ' + skill);
-            stockfish.postMessage('position fen ' + game.fen());
-            stockfish.postMessage('go movetime 1000');
-        }
-
-        function onDrop(source, target) {
-            // See if the move is legal
-            const move = game.move({
-                from: source,
-                to: target,
-                promotion: 'q' // Always promote to queen for simplicity
-            });
-
-            // Illegal move
-            if (move === null) return 'snapback';
-
-            updateStatus();
-
-            // Check if AI should move
-            if (document.getElementById('opponent').value === 'ai' && !game.game_over()) {
-                window.setTimeout(makeAIMove, 250);
-            }
-        }
-
-        function updateStatus() {
-            let status = '';
-            const moveColor = game.turn() === 'b' ? 'Black' : 'White';
-
-            if (game.in_checkmate()) {
-                status = 'Game over, ' + moveColor + ' is in checkmate.';
-            } else if (game.in_draw()) {
-                status = 'Game over, drawn position';
-            } else {
-                status = moveColor + ' to move';
-                if (game.in_check()) status += ' (in check)';
-                if (aiThinking) status += ' - AI is thinking...';
-            }
-
-            document.getElementById('status').innerHTML = status;
-        }
-
-        function startGame() {
-            // Reset error display
-            document.getElementById('error').innerHTML = '';
-
-            // Ensure Chess library is loaded
-            if (typeof Chess === 'undefined') {
-                showError("The Chess library failed to load. Please check your internet connection or browser settings.");
-                return;
-            }
-
-            // Initialize/Reset game logic
-            game = new Chess();
-            aiThinking = false;
-
-            const playerColor = document.getElementById('playerColor').value;
-
-            // Board configuration
-            const config = {
-                draggable: true,
-                position: 'start',
-                orientation: playerColor === 'w' ? 'white' : 'black',
-                onDrop: onDrop,
-                onSnapEnd: function() { board.position(game.fen()); },
-                pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+            // FIX: Use a Blob to bypass GitHub Pages "Same-Origin" restriction for Workers
+            const blobContent = `importScripts("${stockfishUrl}");`;
+            const blob = new Blob([blobContent], { type: 'application/javascript' });
+            const workerUrl = URL.createObjectURL(blob);
+            const worker = new Worker(workerUrl);
+            
+            worker.onmessage = function(e) {
+                if (e.data.startsWith('bestmove')) {
+                    const move = e.data.split(' ')[1];
+                    if (move && move !== '(none)') {
+                        // chess.js 0.10.3 needs { sloppy: true } for engine moves like "e2e4"
+                        game.move(move, { sloppy: true });
+                        board.position(game.fen());
+                        updateStatus();
+                        aiThinking = false;
+                    }
+                }
             };
 
-            if (board) board.destroy();
-            board = Chessboard('board', config);
+            worker.postMessage('uci');
+            worker.postMessage('isready');
+            worker.postMessage('ucinewgame');
+            return worker;
+        } catch (e) {
+            showError('Cannot start Stockfish: ' + e.message);
+            return null;
+        }
+    }
 
-            // Handle AI Setup
-            if (document.getElementById('opponent').value === 'ai') {
-                if (!stockfish) stockfish = initStockfish();
-                if (playerColor === 'b') {
-                    window.setTimeout(makeAIMove, 500);
-                }
-            }
+    function makeAIMove() {
+        if (!game || game.game_over() || aiThinking || !stockfish) return;
+        
+        aiThinking = true;
+        updateStatus();
+        
+        const skill = document.getElementById('skillLevel').value;
+        stockfish.postMessage('setoption name Skill Level value ' + skill);
+        stockfish.postMessage('position fen ' + game.fen());
+        stockfish.postMessage('go movetime 1000');
+    }
 
-            updateStatus();
+    function onDrop(source, target) {
+        const move = game.move({
+            from: source,
+            to: target,
+            promotion: 'q'
+        });
+
+        if (move === null) return 'snapback';
+
+        updateStatus();
+
+        if (document.getElementById('opponent').value === 'ai' && !game.game_over()) {
+            window.setTimeout(makeAIMove, 250);
+        }
+    }
+
+    function updateStatus() {
+        let status = '';
+        const moveColor = game.turn() === 'b' ? 'Black' : 'White';
+
+        if (game.in_checkmate()) {
+            status = 'Game over, ' + moveColor + ' is in checkmate.';
+        } else if (game.in_draw()) {
+            status = 'Game over, drawn position';
+        } else {
+            status = moveColor + ' to move';
+            if (game.in_check()) status += ' (in check)';
+            if (aiThinking) status += ' - AI is thinking...';
         }
 
-        // Wait for page to load fully
-        window.onload = function() {
-            startGame();
+        document.getElementById('status').innerHTML = status;
+    }
+
+    function startGame() {
+        document.getElementById('error').innerHTML = '';
+        if (typeof Chess === 'undefined') {
+            showError("Chess library failed to load.");
+            return;
+        }
+
+        game = new Chess();
+        aiThinking = false;
+
+        const playerColor = document.getElementById('playerColor').value;
+
+        const config = {
+            draggable: true,
+            position: 'start',
+            orientation: playerColor === 'w' ? 'white' : 'black',
+            onDrop: onDrop,
+            onSnapEnd: function() { board.position(game.fen()); },
+            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
         };
-    </script>
-</body>
-</html>
+
+        if (board) board.destroy();
+        board = Chessboard('board', config);
+
+        if (document.getElementById('opponent').value === 'ai') {
+            // Only initialize Stockfish once
+            if (!stockfish) stockfish = initStockfish();
+            
+            // If playing as Black, AI moves first
+            if (playerColor === 'b') {
+                window.setTimeout(makeAIMove, 500);
+            }
+        }
+
+        updateStatus();
+    }
+
+    window.onload = function() {
+        startGame();
+    };
+</script>
