@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chess Game with AI</title>
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <!-- FIXED: Use current stable chess.js version -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/1.4.0/chess.min.js"></script>
+    <!-- FIXED: Latest stable chess.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chess.js@1.4.0/chess.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
     <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
     <style>
@@ -20,7 +20,7 @@
             background: #f0f0f0; 
             font-family: Arial, sans-serif; 
         }
-        #board { width: 400px; margin: 20px 0; border: 2px solid #333; }
+        #board { width: 400px; height: 400px; margin: 20px 0; border: 4px solid #444; background: #eee; }
         .controls { text-align: center; margin: 10px; }
         select, button { padding: 10px; margin: 5px; font-size: 1em; }
         .status { font-size: 1.2em; margin: 10px; }
@@ -52,8 +52,16 @@
     <div id="error"></div>
 
     <script>
+        console.log('Scripts loaded - checking if Chess is defined:', typeof Chess);
+
         let board = null;
-        const game = new Chess();  // This now works!
+        let game;
+        try {
+            game = new Chess();
+            console.log('Chess instance created successfully');
+        } catch (e) {
+            console.error('Chess constructor failed:', e);
+        }
         let stockfish = null;
         let aiThinking = false;
 
@@ -66,10 +74,10 @@
             try {
                 const stockfishUrl = 'https://cdn.jsdelivr.net/npm/stockfish@16.0.0/stockfish.wasm.js';
                 const worker = new Worker(stockfishUrl);
-                console.log('Stockfish worker created');
+                console.log('Stockfish worker started');
 
                 worker.onmessage = function(e) {
-                    console.log('Stockfish:', e.data);
+                    console.log('Stockfish output:', e.data);
                     if (e.data.startsWith('bestmove')) {
                         const move = e.data.split(' ')[1];
                         if (move && move !== '(none)') {
@@ -81,20 +89,20 @@
                     }
                 };
 
-                worker.onerror = (err) => showError('Stockfish error: ' + (err.message || 'failed'));
+                worker.onerror = (err) => showError('Stockfish failed: ' + (err.message || 'unknown'));
 
                 worker.postMessage('uci');
                 worker.postMessage('isready');
                 worker.postMessage('ucinewgame');
                 return worker;
             } catch (e) {
-                showError('Stockfish init failed: ' + e.message);
+                showError('Cannot start Stockfish: ' + e.message);
                 return null;
             }
         }
 
         function makeAIMove() {
-            if (game.game_over() || aiThinking || !stockfish || !board) return;
+            if (!game || game.game_over() || aiThinking || !stockfish || !board) return;
             aiThinking = true;
             const skill = document.getElementById('skillLevel').value;
             stockfish.postMessage('setoption name Skill Level value ' + skill);
@@ -122,17 +130,21 @@
             } else {
                 status = `${turnColor} to move`;
                 if (game.in_check()) status += ' (in check)';
-                if (aiThinking) status += ' • AI thinking...';
+                if (aiThinking) status += ' • AI is thinking...';
             }
             document.getElementById('status').innerHTML = status;
         }
 
         function startGame() {
             document.getElementById('error').innerHTML = '';
+            if (!game) {
+                showError('Chess library not loaded - cannot start game');
+                return;
+            }
             game.reset();
             aiThinking = false;
 
-            console.log('Starting game... creating board');
+            console.log('Creating chessboard...');
 
             const config = {
                 draggable: true,
@@ -149,9 +161,9 @@
 
             try {
                 board = Chessboard('board', config);
-                console.log('Board created successfully');
+                console.log('Chessboard initialized OK');
             } catch (err) {
-                showError('Board creation failed: ' + err.message);
+                showError('Chessboard failed: ' + err.message);
                 console.error(err);
             }
 
@@ -160,9 +172,7 @@
 
             if (document.getElementById('opponent').value === 'ai') {
                 if (!stockfish) stockfish = initStockfish();
-                if (playerColor === 'b' && board) {
-                    setTimeout(makeAIMove, 1000);
-                }
+                if (playerColor === 'b' && board) setTimeout(makeAIMove, 1000);
             } else {
                 stockfish = null;
             }
@@ -170,9 +180,8 @@
             updateStatus();
         }
 
-        // Run on page load
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('Page DOM loaded');
+            console.log('DOM ready - auto-starting game');
             startGame();
         });
     </script>
